@@ -1,6 +1,7 @@
 package snowflake
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -18,16 +19,17 @@ var (
 )
 
 func Init(generatorId uint16) {
-	if generatorId > 4096 {
+	if generatorId > 4095 {
 		panic("Snowflake node ID must be between 0 and 4095")
 	}
 
 	id = generatorId
+	inc = 0
 }
 
 func new() int64 {
 	now := int64(time.Now().UnixMilli()-epoch) << 22
-	idPart := int64(id) & 0x0FFF << 12
+	idPart := int64(id) & 0x0FFF << 10
 
 	incMx.Lock()
 	incPart := int64(inc & 0x03FF)
@@ -37,20 +39,37 @@ func new() int64 {
 	}
 	incMx.Unlock()
 
-	id := now | idPart | incPart
-
-	return id
+	return now | idPart | incPart
 }
 
-func New() int64 {
-	id := new()
+type Snowflake int64
+
+func (s Snowflake) String() string {
+	return fmt.Sprintf("%d", int64(s))
+}
+
+func (s Snowflake) Time() time.Time {
+	timestamp := (int64(s) >> 22) + epoch
+	return time.UnixMilli(timestamp)
+}
+
+func (s Snowflake) GeneratorID() uint16 {
+	return uint16((int64(s) >> 10) & 0x0FFF)
+}
+
+func (s Snowflake) Increment() uint16 {
+	return uint16(int64(s) & 0x03FF)
+}
+
+func New() Snowflake {
+	sf := new()
 
 	lastSnowflakeMx.Lock()
-	if id <= lastSnowflake {
-		id = lastSnowflake + 1
+	if sf <= lastSnowflake {
+		sf = lastSnowflake + 1
 	}
-	lastSnowflake = id
+	lastSnowflake = sf
 	lastSnowflakeMx.Unlock()
 
-	return id
+	return Snowflake(sf)
 }
